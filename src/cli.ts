@@ -94,7 +94,7 @@ async function main() {
   writeFileSync(join(dir, 'package.json'), JSON.stringify({
     name: `${slug}-mcp-server`,
     version: '1.0.0',
-    description: `${answers.providerName} MCP server powered by mcp-oauth-bridge`,
+    description: `${answers.providerName} MCP server powered by mcp-server-bridge`,
     type: 'module',
     main: 'dist/index.js',
     scripts: {
@@ -104,7 +104,7 @@ async function main() {
     },
     dependencies: {
       '@modelcontextprotocol/sdk': '^1.27.0',
-      'mcp-oauth-bridge': '^0.1.0',
+      'mcp-server-bridge': '^0.1.0',
       'zod': '^3.25.0',
     },
     devDependencies: {
@@ -161,7 +161,7 @@ MOCK_MODE=false
 
   // src/provider.config.ts
   const fetchUserIdentityCode = generateFetchUserIdentity(answers);
-  writeFileSync(join(dir, 'src', 'provider.config.ts'), `import type { ProviderConfig } from 'mcp-oauth-bridge';
+  writeFileSync(join(dir, 'src', 'provider.config.ts'), `import type { ProviderConfig } from 'mcp-server-bridge';
 
 export const providerConfig: ProviderConfig = {
   name: '${answers.providerName}',
@@ -188,7 +188,7 @@ ${fetchUserIdentityCode}
 `);
 
   // src/index.ts
-  writeFileSync(join(dir, 'src', 'index.ts'), `import { createBridgeServer } from 'mcp-oauth-bridge';
+  writeFileSync(join(dir, 'src', 'index.ts'), `import { createBridgeServer } from 'mcp-server-bridge';
 import { providerConfig } from './provider.config.js';
 import { createServer } from './server.js';
 
@@ -202,7 +202,7 @@ start();
 
   // src/server.ts
   writeFileSync(join(dir, 'src', 'server.ts'), `import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { ProviderApiClientInterface } from 'mcp-oauth-bridge';
+import type { ProviderApiClientInterface } from 'mcp-server-bridge';
 import { registerExampleTool } from './tools/example.js';
 
 export function createServer(client: ProviderApiClientInterface): McpServer {
@@ -218,8 +218,8 @@ export function createServer(client: ProviderApiClientInterface): McpServer {
   // src/tools/example.ts
   writeFileSync(join(dir, 'src', 'tools', 'example.ts'), `import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { ProviderApiClientInterface } from 'mcp-oauth-bridge';
-import { formatToolError } from 'mcp-oauth-bridge';
+import type { ProviderApiClientInterface } from 'mcp-server-bridge';
+import { formatToolError } from 'mcp-server-bridge';
 
 export function registerExampleTool(server: McpServer, client: ProviderApiClientInterface): void {
   server.tool(
