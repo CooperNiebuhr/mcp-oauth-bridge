@@ -259,9 +259,6 @@ You don't need to implement any of this:
 - **Token garbage collection** — expired tokens are swept every 15 minutes
 - **Persistent token storage** — survives server restarts via JSON file
 
-## Real-World Example
-
-The [Zoho CRM MCP server](https://github.com/coopernetes/zoho-mcp-server) is built with this bridge — 34 tools, 18-line entry point, zero OAuth boilerplate.
 
 ## License
 
