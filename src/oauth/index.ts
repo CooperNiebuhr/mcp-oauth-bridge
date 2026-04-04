@@ -1,3 +1,4 @@
+export type { ClientsStore, TokenStore } from './interfaces.js';
 export { BridgeOAuthProvider } from './provider.js';
 export { OAuthClientsStore, OAuthTokenStore, createStores } from './store.js';
 export type { AuthCodeRecord, AccessTokenRecord, RefreshTokenRecord, PendingAuthRecord } from './store.js';

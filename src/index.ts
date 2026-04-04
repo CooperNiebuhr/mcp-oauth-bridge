@@ -3,7 +3,13 @@ export type { ProviderConfig, ProviderApiClientInterface, UserIdentity, UserProv
 export type { ApiClientConfig, TokenResponse } from './client/types.js';
 export type { CreateBridgeServerOptions } from './server/create-app.js';
 
-// OAuth
+// Store interfaces (implement these for custom storage backends)
+export type { ClientsStore, TokenStore } from './oauth/interfaces.js';
+export type {
+  AuthCodeRecord, AccessTokenRecord, RefreshTokenRecord, PendingAuthRecord,
+} from './oauth/store.js';
+
+// OAuth (default in-memory implementations)
 export { BridgeOAuthProvider } from './oauth/provider.js';
 export { OAuthClientsStore, OAuthTokenStore, createStores } from './oauth/store.js';
 

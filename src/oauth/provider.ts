@@ -2,26 +2,26 @@ import type { Response } from 'express';
 import type { OAuthServerProvider, AuthorizationParams } from '@modelcontextprotocol/sdk/server/auth/provider.js';
 import type { OAuthClientInformationFull, OAuthTokens, OAuthTokenRevocationRequest } from '@modelcontextprotocol/sdk/shared/auth.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
-import type { OAuthClientsStore, OAuthTokenStore } from './store.js';
+import type { ClientsStore, TokenStore } from './interfaces.js';
 import { ACCESS_TOKEN_EXPIRY_S } from './store.js';
 import type { ProviderConfig } from '../types.js';
 
 export class BridgeOAuthProvider implements OAuthServerProvider {
-  private _clientsStore: OAuthClientsStore;
-  private tokenStore: OAuthTokenStore;
+  private _clientsStore: ClientsStore;
+  private tokenStore: TokenStore;
   private config: ProviderConfig;
 
-  constructor(clientsStore: OAuthClientsStore, tokenStore: OAuthTokenStore, config: ProviderConfig) {
+  constructor(clientsStore: ClientsStore, tokenStore: TokenStore, config: ProviderConfig) {
     this._clientsStore = clientsStore;
     this.tokenStore = tokenStore;
     this.config = config;
   }
 
-  get clientsStore(): OAuthClientsStore {
+  get clientsStore(): ClientsStore {
     return this._clientsStore;
   }
 
-  getTokenStore(): OAuthTokenStore {
+  getTokenStore(): TokenStore {
     return this.tokenStore;
   }
 

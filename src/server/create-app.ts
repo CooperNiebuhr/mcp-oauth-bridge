@@ -18,6 +18,7 @@ import cors from 'cors';
 
 import { BridgeOAuthProvider } from '../oauth/provider.js';
 import { createStores, ACCESS_TOKEN_EXPIRY_S } from '../oauth/store.js';
+import type { ClientsStore, TokenStore } from '../oauth/interfaces.js';
 import { ProviderApiClient } from '../client/api-client.js';
 import type { ProviderConfig, ProviderApiClientInterface, UserIdentity } from '../types.js';
 import type { TokenResponse } from '../client/types.js';
@@ -26,6 +27,8 @@ export interface CreateBridgeServerOptions {
   config: ProviderConfig;
   /** Factory that receives a ProviderApiClient and returns an McpServer with tools registered. */
   createMcpServer: (client: ProviderApiClientInterface) => ConnectableServer;
+  /** Custom store implementations. Defaults to in-memory with JSON file persistence. */
+  stores?: { clientsStore: ClientsStore; tokenStore: TokenStore };
   /** Express trust proxy setting (e.g. 1 for Railway). */
   trustProxy?: number | boolean;
   /** Host to bind to (default '0.0.0.0'). */
@@ -37,7 +40,7 @@ export function createBridgeServer(options: CreateBridgeServerOptions) {
 
   // --- OAuth 2.1 setup ---
   const issuerUrl = new URL(process.env.MCP_OAUTH_ISSUER || 'http://localhost:3000');
-  const { clientsStore, tokenStore } = createStores();
+  const { clientsStore, tokenStore } = options.stores ?? createStores();
   const oauthProvider = new BridgeOAuthProvider(clientsStore, tokenStore, config);
 
   const oauthMetadata = createOAuthMetadata({

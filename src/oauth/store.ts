@@ -5,6 +5,7 @@ import type { OAuthClientInformationFull } from '@modelcontextprotocol/sdk/share
 import type { OAuthRegisteredClientsStore } from '@modelcontextprotocol/sdk/server/auth/clients.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import type { UserProviderTokenRecord } from '../types.js';
+import type { ClientsStore, TokenStore } from './interfaces.js';
 
 // --- Expiry constants ---
 export const ACCESS_TOKEN_EXPIRY_S = 3600;         // 1 hour
@@ -91,7 +92,7 @@ function saveSnapshot(snapshot: StoreSnapshot): void {
 }
 
 // --- Clients Store ---
-export class OAuthClientsStore implements OAuthRegisteredClientsStore {
+export class OAuthClientsStore implements ClientsStore {
   private clients = new Map<string, OAuthClientInformationFull>();
   private persistFn: () => void;
 
@@ -118,7 +119,7 @@ export class OAuthClientsStore implements OAuthRegisteredClientsStore {
 }
 
 // --- Token Store ---
-export class OAuthTokenStore {
+export class OAuthTokenStore implements TokenStore {
   private pendingAuths = new Map<string, PendingAuthRecord>();
   private authCodes = new Map<string, AuthCodeRecord>();
   private accessTokens = new Map<string, AccessTokenRecord>();
