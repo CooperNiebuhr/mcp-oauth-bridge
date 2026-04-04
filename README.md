@@ -31,27 +31,7 @@ Provide a single config object describing your provider's OAuth endpoints and yo
 
 The bridge translates between the MCP SDK's OAuth 2.1 requirements and your provider's OAuth 2.0 flow. Your code only defines the provider config and tool handlers.
 
-## Quick Start
-
-Scaffold a new MCP server project interactively:
-
-```bash
-npx mcp-server-bridge
-```
-
-You'll be prompted for your provider's OAuth URLs, scopes, and user-info endpoint. The CLI generates a complete project with everything wired up.
-
-Then:
-
-```bash
-cd your-provider-mcp-server
-npm install
-cp .env.example .env.local
-# Fill in your OAuth client ID and secret
-npm run dev
-```
-
-## Manual Setup
+## Getting Started
 
 ```bash
 npm install mcp-server-bridge @modelcontextprotocol/sdk
@@ -151,6 +131,8 @@ Three files, and you have a production-ready MCP server.
 | `auth.tokenUrl` | `string` | Yes | Provider's OAuth token endpoint |
 | `auth.scopes` | `string[]` | Yes | Scopes to request |
 | `auth.scopeDelimiter` | `string` | No | Delimiter for joining scopes in the authorize URL (default: `' '` per RFC 6749 &sect;3.3). Set to `','` for providers like Zoho that use comma-separated scopes. |
+| `auth.tokenContentType` | `'form' \| 'json'` | No | Content type for the token exchange request (default: `'form'`). Set to `'json'` for providers like Notion and Linear that require JSON. |
+| `auth.clientAuthMethod` | `'body' \| 'basic'` | No | How to send client credentials in the token exchange (default: `'body'`). Set to `'basic'` for providers that require HTTP Basic auth (e.g. Stripe). |
 | `auth.extraAuthorizeParams` | `Record<string, string>` | No | Extra query params for authorize redirect (e.g. `{ access_type: 'offline' }`) |
 | `env.clientId` | `string` | Yes | Name of the env var holding the client ID |
 | `env.clientSecret` | `string` | Yes | Name of the env var holding the client secret |
@@ -158,9 +140,80 @@ Three files, and you have a production-ready MCP server.
 | `apiBaseUrl` | `string` | Yes | Provider's API base URL |
 | `fetchUserIdentity` | `(accessToken: string) => Promise<UserIdentity>` | Yes | Fetch user info after OAuth exchange |
 | `authorizeUser` | `(identity: UserIdentity) => string \| null` | No | Return null to allow, error message to deny |
+| `tokenNeverExpires` | `boolean` | No | Set to `true` for providers with non-expiring tokens (see [Provider Compatibility](#provider-compatibility)) |
 | `refreshTokenUrl` | `string` | No | Token refresh endpoint if different from `tokenUrl` |
 | `mcpServer` | `{ name: string; version: string }` | No | MCP server metadata |
-| `m2m` | `{ getProviderCredentials, scopes? }` | No | Machine-to-machine config (see [M2M Auth](#machine-to-machine-auth) below) |
+| `m2m` | `{ getProviderCredentials, scopes? }` | No | Machine-to-machine config (see [M2M Auth](#machine-to-machine-auth)) |
+
+## Provider Compatibility
+
+OAuth providers deviate from the spec in predictable ways. The bridge handles common variations through config options:
+
+### Non-expiring tokens
+
+Providers like ClickUp, Notion, Linear, Todoist, Figma, and Slack issue access tokens that never expire and don't provide a refresh token. Set `tokenNeverExpires: true` to handle this:
+
+```ts
+{
+  tokenNeverExpires: true,
+  // The callback handler will accept responses without a refresh_token.
+  // Tokens are stored with a far-future expiry.
+  // 401 responses throw ProviderAuthError instead of attempting refresh.
+}
+```
+
+### JSON token exchange
+
+Providers like Notion and Linear require the token exchange body as JSON instead of `application/x-www-form-urlencoded`:
+
+```ts
+{
+  auth: {
+    tokenContentType: 'json',
+    // ...
+  },
+}
+```
+
+### Basic auth for token exchange
+
+Providers like Stripe send client credentials via HTTP Basic auth header instead of the request body:
+
+```ts
+{
+  auth: {
+    clientAuthMethod: 'basic',
+    // ...
+  },
+}
+```
+
+### Custom scope delimiter
+
+Most providers use space-separated scopes per RFC 6749. Zoho uses commas:
+
+```ts
+{
+  auth: {
+    scopeDelimiter: ',',
+    scopes: ['ZohoCRM.modules.ALL', 'ZohoCRM.settings.ALL'],
+    // ...
+  },
+}
+```
+
+### Extra authorize parameters
+
+Some providers require additional parameters on the authorize redirect (e.g. Google's `access_type: 'offline'` to get a refresh token):
+
+```ts
+{
+  auth: {
+    extraAuthorizeParams: { access_type: 'offline', prompt: 'consent' },
+    // ...
+  },
+}
+```
 
 ## Machine-to-Machine Auth
 
