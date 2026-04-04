@@ -1,6 +1,7 @@
+import express from 'express';
 import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
 import { createOAuthMetadata } from '@modelcontextprotocol/sdk/server/auth/router.js';
-import { authorizationHandler } from '@modelcontextprotocol/sdk/server/auth/handlers/authorize.js';
+import { authorizationHandler, redirectUriMatches } from '@modelcontextprotocol/sdk/server/auth/handlers/authorize.js';
 import { tokenHandler } from '@modelcontextprotocol/sdk/server/auth/handlers/token.js';
 import { clientRegistrationHandler } from '@modelcontextprotocol/sdk/server/auth/handlers/register.js';
 import { revocationHandler } from '@modelcontextprotocol/sdk/server/auth/handlers/revoke.js';
@@ -16,7 +17,7 @@ interface ConnectableServer {
 import cors from 'cors';
 
 import { BridgeOAuthProvider } from '../oauth/provider.js';
-import { createStores } from '../oauth/store.js';
+import { createStores, ACCESS_TOKEN_EXPIRY_S } from '../oauth/store.js';
 import { ProviderApiClient } from '../client/api-client.js';
 import type { ProviderConfig, ProviderApiClientInterface, UserIdentity } from '../types.js';
 import type { TokenResponse } from '../client/types.js';
@@ -52,7 +53,7 @@ export function createBridgeServer(options: CreateBridgeServerOptions) {
   // --- OAuth routes ---
 
   // Metadata discovery
-  app.get('/.well-known/oauth-authorization-server', (_req, res) => {
+  app.get('/.well-known/oauth-authorization-server', cors(), (_req, res) => {
     res.json(oauthMetadata);
   });
 
@@ -74,7 +75,84 @@ export function createBridgeServer(options: CreateBridgeServerOptions) {
     provider: oauthProvider,
   }));
 
-  // Token endpoint
+  // --- M2M client_credentials handler ---
+  // The MCP SDK's tokenHandler does not support client_credentials server-side
+  // (it explicitly throws UnsupportedGrantTypeError). This middleware intercepts
+  // client_credentials requests when config.m2m is provided, handling machine-to-machine
+  // auth before the SDK handler runs. All other grant types pass through unchanged.
+  if (config.m2m) {
+    const m2mConfig = config.m2m;
+    app.post('/token',
+      cors(),
+      express.urlencoded({ extended: false }),
+      async (req, res, next) => {
+        if (req.body?.grant_type !== 'client_credentials') {
+          next();
+          return;
+        }
+
+        try {
+          const { client_id, client_secret } = req.body;
+          if (!client_id) {
+            res.status(400).json({ error: 'invalid_request', error_description: 'client_id is required' });
+            return;
+          }
+
+          const client = clientsStore.getClient(client_id);
+          if (!client) {
+            res.status(401).json({ error: 'invalid_client', error_description: 'Unknown client_id' });
+            return;
+          }
+
+          // client_credentials requires a confidential client (must have a secret)
+          if (!client.client_secret) {
+            res.status(400).json({ error: 'invalid_client', error_description: 'Public clients cannot use client_credentials' });
+            return;
+          }
+          if (!client_secret || client.client_secret !== client_secret) {
+            res.status(401).json({ error: 'invalid_client', error_description: 'Invalid client_secret' });
+            return;
+          }
+          if (client.client_secret_expires_at && client.client_secret_expires_at < Math.floor(Date.now() / 1000)) {
+            res.status(401).json({ error: 'invalid_client', error_description: 'Client secret has expired' });
+            return;
+          }
+
+          // Obtain provider credentials for M2M access
+          const providerCreds = await m2mConfig.getProviderCredentials();
+          const m2mScopes = m2mConfig.scopes ?? config.auth.scopes;
+
+          // Store provider tokens so the /mcp endpoint can use them
+          tokenStore.setUserProviderToken(client_id, {
+            providerRefreshToken: providerCreds.refreshToken,
+            providerAccessToken: providerCreds.accessToken,
+            providerAccessTokenExpiry: Math.floor(Date.now() / 1000) + (providerCreds.expiresIn ?? 3600),
+            identity: { userId: `m2m:${client_id}`, email: `m2m@${config.name.toLowerCase()}` },
+          });
+
+          // Issue MCP tokens
+          const accessToken = tokenStore.createAccessToken(client_id, m2mScopes);
+          const refreshToken = tokenStore.createRefreshToken(client_id, m2mScopes);
+
+          console.log(`[oauth] M2M tokens issued for client ${client_id}`);
+
+          res.setHeader('Cache-Control', 'no-store');
+          res.status(200).json({
+            access_token: accessToken,
+            token_type: 'bearer',
+            expires_in: ACCESS_TOKEN_EXPIRY_S,
+            refresh_token: refreshToken,
+            scope: m2mScopes.join(' '),
+          });
+        } catch (err) {
+          console.error('[oauth] M2M token exchange failed:', err);
+          res.status(500).json({ error: 'server_error', error_description: 'Failed to issue M2M credentials' });
+        }
+      },
+    );
+  }
+
+  // Token endpoint (handles authorization_code + refresh_token via SDK)
   app.use('/token', tokenHandler({
     provider: oauthProvider,
   }));
@@ -113,7 +191,7 @@ export function createBridgeServer(options: CreateBridgeServerOptions) {
         res.status(400).send('Unknown client');
         return;
       }
-      if (registeredClient.redirect_uris && !registeredClient.redirect_uris.includes(pending.redirectUri)) {
+      if (registeredClient.redirect_uris && !registeredClient.redirect_uris.some(uri => redirectUriMatches(pending.redirectUri, uri))) {
         res.status(400).send('Redirect URI does not match registered client');
         return;
       }
@@ -193,6 +271,7 @@ export function createBridgeServer(options: CreateBridgeServerOptions) {
         codeChallenge: pending.codeChallenge,
         redirectUri: pending.redirectUri,
         scopes: pending.scopes,
+        resource: pending.resource,
       });
 
       const redirectUrl = new URL(pending.redirectUri);

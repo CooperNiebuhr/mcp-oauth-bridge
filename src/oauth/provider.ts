@@ -42,10 +42,11 @@ export class BridgeOAuthProvider implements OAuthServerProvider {
       codeChallenge: params.codeChallenge,
       state: params.state,
       scopes: params.scopes ?? [],
+      resource: params.resource?.href,
     });
 
     const authUrl = new URL(this.config.auth.authorizeUrl);
-    authUrl.searchParams.set('scope', this.config.auth.scopes.join(','));
+    authUrl.searchParams.set('scope', this.config.auth.scopes.join(this.config.auth.scopeDelimiter ?? ' '));
     authUrl.searchParams.set('client_id', providerClientId);
     authUrl.searchParams.set('response_type', 'code');
     authUrl.searchParams.set('redirect_uri', callbackUrl);
@@ -75,6 +76,7 @@ export class BridgeOAuthProvider implements OAuthServerProvider {
     authorizationCode: string,
     _codeVerifier?: string,
     redirectUri?: string,
+    resource?: URL,
   ): Promise<OAuthTokens> {
     const record = this.tokenStore.getAndDeleteAuthCode(authorizationCode);
     if (!record) {
@@ -89,7 +91,8 @@ export class BridgeOAuthProvider implements OAuthServerProvider {
       throw new Error('redirect_uri mismatch');
     }
 
-    const accessToken = this.tokenStore.createAccessToken(client.client_id, record.scopes);
+    const effectiveResource = resource?.href ?? record.resource;
+    const accessToken = this.tokenStore.createAccessToken(client.client_id, record.scopes, effectiveResource);
     const refreshToken = this.tokenStore.createRefreshToken(client.client_id, record.scopes);
 
     console.log(`[oauth] Tokens issued for client ${client.client_id}`);
@@ -99,6 +102,7 @@ export class BridgeOAuthProvider implements OAuthServerProvider {
       token_type: 'bearer',
       expires_in: ACCESS_TOKEN_EXPIRY_S,
       refresh_token: refreshToken,
+      scope: record.scopes.join(' '),
     };
   }
 
@@ -106,6 +110,7 @@ export class BridgeOAuthProvider implements OAuthServerProvider {
     client: OAuthClientInformationFull,
     refreshToken: string,
     scopes?: string[],
+    resource?: URL,
   ): Promise<OAuthTokens> {
     const record = this.tokenStore.getRefreshToken(refreshToken);
     if (!record) {
@@ -116,11 +121,18 @@ export class BridgeOAuthProvider implements OAuthServerProvider {
       throw new Error('Refresh token was not issued to this client');
     }
 
+    // Verify provider credentials still exist before issuing new MCP tokens.
+    // If provider tokens were revoked or evicted, the client needs to re-authorize
+    // rather than silently receiving MCP tokens that will fail on first API call.
+    if (!this.tokenStore.getUserProviderToken(client.client_id)) {
+      throw new Error('Provider credentials have been revoked or expired. Please re-authorize.');
+    }
+
     // Rotate: delete old refresh token, issue new pair
     this.tokenStore.deleteRefreshToken(refreshToken);
 
     const effectiveScopes = scopes?.length ? scopes : record.scopes;
-    const newAccessToken = this.tokenStore.createAccessToken(client.client_id, effectiveScopes);
+    const newAccessToken = this.tokenStore.createAccessToken(client.client_id, effectiveScopes, resource?.href);
     const newRefreshToken = this.tokenStore.createRefreshToken(client.client_id, effectiveScopes);
 
     console.log(`[oauth] Tokens refreshed for client ${client.client_id}`);
@@ -130,6 +142,7 @@ export class BridgeOAuthProvider implements OAuthServerProvider {
       token_type: 'bearer',
       expires_in: ACCESS_TOKEN_EXPIRY_S,
       refresh_token: newRefreshToken,
+      scope: effectiveScopes.join(' '),
     };
   }
 

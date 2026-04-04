@@ -15,6 +15,8 @@ export interface ProviderConfig {
     tokenUrl: string;
     /** Scopes to request from the provider. */
     scopes: string[];
+    /** Delimiter used to join scopes in the authorize URL (default: ' ' per RFC 6749 §3.3). */
+    scopeDelimiter?: string;
     /** Additional query params for the authorize redirect (e.g. { access_type: "offline" }). */
     extraAuthorizeParams?: Record<string, string>;
   };
@@ -49,6 +51,25 @@ export interface ProviderConfig {
 
   /** MCP server name and version for the McpServer constructor. */
   mcpServer?: { name: string; version: string };
+
+  /**
+   * Machine-to-machine configuration. When provided, enables the client_credentials
+   * grant type for non-interactive MCP clients (CI pipelines, headless agents, etc.).
+   *
+   * The MCP SDK's token handler does not support client_credentials server-side,
+   * so the bridge installs a thin middleware that intercepts this grant type before
+   * the SDK handler runs. All other grant types pass through unchanged.
+   */
+  m2m?: {
+    /** Returns provider credentials for machine-to-machine access. */
+    getProviderCredentials: () => Promise<{
+      accessToken: string;
+      refreshToken: string;
+      expiresIn?: number;
+    }>;
+    /** Scopes to grant M2M clients (defaults to config.auth.scopes). */
+    scopes?: string[];
+  };
 }
 
 /** User identity returned by the provider after OAuth login. */

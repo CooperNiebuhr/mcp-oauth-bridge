@@ -18,12 +18,14 @@ export interface AuthCodeRecord {
   codeChallenge: string;
   redirectUri: string;
   scopes: string[];
+  resource?: string;
   expiresAt: number;
 }
 
 export interface AccessTokenRecord {
   clientId: string;
   scopes: string[];
+  resource?: string;
   expiresAt: number;
 }
 
@@ -39,6 +41,7 @@ export interface PendingAuthRecord {
   codeChallenge: string;
   state?: string;
   scopes: string[];
+  resource?: string;
   expiresAt: number;
 }
 
@@ -180,9 +183,9 @@ export class OAuthTokenStore {
   }
 
   // --- Access tokens ---
-  createAccessToken(clientId: string, scopes: string[]): string {
+  createAccessToken(clientId: string, scopes: string[], resource?: string): string {
     const token = generateToken();
-    this.accessTokens.set(token, { clientId, scopes, expiresAt: nowSeconds() + ACCESS_TOKEN_EXPIRY_S });
+    this.accessTokens.set(token, { clientId, scopes, resource, expiresAt: nowSeconds() + ACCESS_TOKEN_EXPIRY_S });
     this.persistFn();
     return token;
   }
@@ -195,7 +198,13 @@ export class OAuthTokenStore {
       this.persistFn();
       return undefined;
     }
-    return { token, clientId: record.clientId, scopes: record.scopes, expiresAt: record.expiresAt };
+    return {
+      token,
+      clientId: record.clientId,
+      scopes: record.scopes,
+      expiresAt: record.expiresAt,
+      ...(record.resource ? { resource: new URL(record.resource) } : {}),
+    };
   }
 
   // --- Refresh tokens ---
