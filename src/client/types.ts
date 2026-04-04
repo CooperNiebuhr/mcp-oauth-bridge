@@ -4,6 +4,8 @@ export interface ApiClientConfig {
   refreshToken: string;
   tokenUrl: string;
   apiBaseUrl: string;
+  /** When true, skip token refresh — the provider token never expires. */
+  tokenNeverExpires?: boolean;
 }
 
 export interface TokenResponse {

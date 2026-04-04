@@ -295,3 +295,88 @@ describe('Server integration tests', () => {
     });
   });
 });
+
+describe('buildProviderTokenRequest', () => {
+  let buildProviderTokenRequest: typeof import('../src/server/create-app.js').buildProviderTokenRequest;
+
+  beforeAll(async () => {
+    const mod = await import('../src/server/create-app.js');
+    buildProviderTokenRequest = mod.buildProviderTokenRequest;
+  });
+
+  it('sends form-urlencoded with body credentials by default', () => {
+    const { url, init } = buildProviderTokenRequest(testConfig, {
+      code: 'abc',
+      redirect_uri: 'http://localhost/cb',
+      grant_type: 'authorization_code',
+    });
+
+    expect(url).toBe('https://provider.test/token');
+    expect((init.headers as Record<string, string>)['Content-Type']).toBe('application/x-www-form-urlencoded');
+    const body = new URLSearchParams(init.body as string);
+    expect(body.get('client_id')).toBe('provider-cid');
+    expect(body.get('client_secret')).toBe('provider-csecret');
+    expect(body.get('code')).toBe('abc');
+  });
+
+  it('sends JSON body when tokenContentType is json', () => {
+    const jsonConfig: ProviderConfig = {
+      ...testConfig,
+      auth: { ...testConfig.auth, tokenContentType: 'json' },
+    };
+
+    const { init } = buildProviderTokenRequest(jsonConfig, {
+      code: 'abc',
+      grant_type: 'authorization_code',
+    });
+
+    expect((init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+    const body = JSON.parse(init.body as string);
+    expect(body.client_id).toBe('provider-cid');
+    expect(body.client_secret).toBe('provider-csecret');
+    expect(body.code).toBe('abc');
+  });
+
+  it('sends Basic auth header when clientAuthMethod is basic', () => {
+    const basicConfig: ProviderConfig = {
+      ...testConfig,
+      auth: { ...testConfig.auth, clientAuthMethod: 'basic' },
+    };
+
+    const { init } = buildProviderTokenRequest(basicConfig, {
+      code: 'abc',
+      grant_type: 'authorization_code',
+    });
+
+    const headers = init.headers as Record<string, string>;
+    expect(headers['Authorization']).toBe(
+      `Basic ${Buffer.from('provider-cid:provider-csecret').toString('base64')}`,
+    );
+
+    // Credentials should NOT be in the body
+    const body = new URLSearchParams(init.body as string);
+    expect(body.has('client_id')).toBe(false);
+    expect(body.has('client_secret')).toBe(false);
+  });
+
+  it('combines JSON + Basic auth', () => {
+    const comboConfig: ProviderConfig = {
+      ...testConfig,
+      auth: { ...testConfig.auth, tokenContentType: 'json', clientAuthMethod: 'basic' },
+    };
+
+    const { init } = buildProviderTokenRequest(comboConfig, {
+      code: 'abc',
+      grant_type: 'authorization_code',
+    });
+
+    const headers = init.headers as Record<string, string>;
+    expect(headers['Content-Type']).toBe('application/json');
+    expect(headers['Authorization']).toContain('Basic ');
+
+    const body = JSON.parse(init.body as string);
+    expect(body.client_id).toBeUndefined();
+    expect(body.client_secret).toBeUndefined();
+    expect(body.code).toBe('abc');
+  });
+});

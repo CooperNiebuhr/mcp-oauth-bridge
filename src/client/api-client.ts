@@ -1,4 +1,4 @@
-import { ProviderRateLimitError, ProviderApiError, ProviderNetworkError } from '../errors.js';
+import { ProviderAuthError, ProviderRateLimitError, ProviderApiError, ProviderNetworkError } from '../errors.js';
 import { getAccessToken, forceRefresh } from './token-manager.js';
 import type { ApiClientConfig } from './types.js';
 
@@ -49,6 +49,9 @@ export class ProviderApiClient {
     }
 
     if (response.status === 401 && !isRetryAfterAuth) {
+      if (this.config.tokenNeverExpires) {
+        throw new ProviderAuthError(`Authentication failed on ${method} ${endpoint}. Token cannot be refreshed — please re-authorize.`);
+      }
       console.log(`[provider] 401 on ${method} ${endpoint}, forcing token refresh and retrying`);
       await forceRefresh(this.config);
       return this.doMutate<T>(method, endpoint, body, true);
@@ -86,6 +89,9 @@ export class ProviderApiClient {
     }
 
     if (response.status === 401 && !isRetryAfterAuth) {
+      if (this.config.tokenNeverExpires) {
+        throw new ProviderAuthError(`Authentication failed on DELETE ${endpoint}. Token cannot be refreshed — please re-authorize.`);
+      }
       console.log(`[provider] 401 on DELETE ${endpoint}, forcing token refresh and retrying`);
       await forceRefresh(this.config);
       return this.doRemove<T>(endpoint, params, true);
@@ -121,6 +127,9 @@ export class ProviderApiClient {
     }
 
     if (response.status === 401 && !isRetryAfterAuth) {
+      if (this.config.tokenNeverExpires) {
+        throw new ProviderAuthError(`Authentication failed on ${endpoint}. Token cannot be refreshed — please re-authorize.`);
+      }
       console.log(`[provider] 401 on ${endpoint}, forcing token refresh and retrying`);
       await forceRefresh(this.config);
       return this.doRequest<T>(endpoint, params, true);

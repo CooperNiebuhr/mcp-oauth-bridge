@@ -35,6 +35,46 @@ export interface CreateBridgeServerOptions {
   host?: string;
 }
 
+const TEN_YEARS_S = 10 * 365 * 24 * 3600;
+
+/** Build the fetch request for exchanging an auth code with the upstream provider. */
+export function buildProviderTokenRequest(
+  config: ProviderConfig,
+  params: Record<string, string>,
+): { url: string; init: RequestInit } {
+  const clientId = process.env[config.env.clientId]!;
+  const clientSecret = process.env[config.env.clientSecret]!;
+  const useBasic = config.auth.clientAuthMethod === 'basic';
+  const useJson = config.auth.tokenContentType === 'json';
+
+  const headers: Record<string, string> = {};
+
+  if (useBasic) {
+    headers['Authorization'] = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`;
+  }
+
+  let body: string;
+  if (useJson) {
+    headers['Content-Type'] = 'application/json';
+    const bodyObj: Record<string, string> = { ...params };
+    if (!useBasic) {
+      bodyObj.client_id = clientId;
+      bodyObj.client_secret = clientSecret;
+    }
+    body = JSON.stringify(bodyObj);
+  } else {
+    headers['Content-Type'] = 'application/x-www-form-urlencoded';
+    const bodyParams = new URLSearchParams(params);
+    if (!useBasic) {
+      bodyParams.set('client_id', clientId);
+      bodyParams.set('client_secret', clientSecret);
+    }
+    body = bodyParams.toString();
+  }
+
+  return { url: config.auth.tokenUrl, init: { method: 'POST', headers, body } };
+}
+
 export function createBridgeServer(options: CreateBridgeServerOptions) {
   const { config, createMcpServer, trustProxy, host = '0.0.0.0' } = options;
 
@@ -200,22 +240,16 @@ export function createBridgeServer(options: CreateBridgeServerOptions) {
       }
 
       // Exchange provider auth code for tokens
-      const providerClientId = process.env[config.env.clientId]!;
-      const providerClientSecret = process.env[config.env.clientSecret]!;
       const callbackUrl = process.env[`${config.name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_OAUTH_CALLBACK_URL`]
         || `${process.env.MCP_OAUTH_ISSUER || 'http://localhost:3000'}${callbackPath}`;
 
-      const tokenResponse = await fetch(config.auth.tokenUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          code,
-          client_id: providerClientId,
-          client_secret: providerClientSecret,
-          redirect_uri: callbackUrl,
-          grant_type: 'authorization_code',
-        }).toString(),
+      const { url: tokenUrl, init: tokenInit } = buildProviderTokenRequest(config, {
+        code,
+        redirect_uri: callbackUrl,
+        grant_type: 'authorization_code',
       });
+
+      const tokenResponse = await fetch(tokenUrl, tokenInit);
 
       if (!tokenResponse.ok) {
         const text = await tokenResponse.text();
@@ -232,9 +266,9 @@ export function createBridgeServer(options: CreateBridgeServerOptions) {
         return;
       }
 
-      if (!providerTokens.refresh_token) {
+      if (!providerTokens.refresh_token && !config.tokenNeverExpires) {
         console.error(`[oauth] ${config.name} did not return a refresh token`);
-        res.status(400).send(`${config.name} did not return a refresh token. You may need to revoke and re-authorize the app.`);
+        res.status(400).send(`${config.name} did not return a refresh token. You may need to revoke and re-authorize the app, or set tokenNeverExpires if this provider uses non-expiring tokens.`);
         return;
       }
 
@@ -259,10 +293,14 @@ export function createBridgeServer(options: CreateBridgeServerOptions) {
       }
 
       // Store user's provider tokens keyed to MCP client ID
+      const expiresIn = config.tokenNeverExpires
+        ? (providerTokens.expires_in || TEN_YEARS_S)
+        : (providerTokens.expires_in || 3600);
+
       tokenStore.setUserProviderToken(pending.clientId, {
-        providerRefreshToken: providerTokens.refresh_token,
+        providerRefreshToken: providerTokens.refresh_token ?? null,
         providerAccessToken: providerTokens.access_token,
-        providerAccessTokenExpiry: Math.floor(Date.now() / 1000) + (providerTokens.expires_in || 3600),
+        providerAccessTokenExpiry: Math.floor(Date.now() / 1000) + expiresIn,
         identity,
       });
 
@@ -317,9 +355,10 @@ export function createBridgeServer(options: CreateBridgeServerOptions) {
       const client = new ProviderApiClient({
         clientId: process.env[config.env.clientId]!,
         clientSecret: process.env[config.env.clientSecret]!,
-        refreshToken: userTokens.providerRefreshToken,
+        refreshToken: userTokens.providerRefreshToken ?? userTokens.providerAccessToken ?? '',
         tokenUrl: config.auth.tokenUrl,
         apiBaseUrl: config.apiBaseUrl,
+        tokenNeverExpires: config.tokenNeverExpires,
       });
 
       const server = createMcpServer(client);

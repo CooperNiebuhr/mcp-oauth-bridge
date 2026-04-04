@@ -8,6 +8,12 @@ const refreshPromises = new Map<string, Promise<string>>();
 const REFRESH_BUFFER_MS = 5 * 60 * 1000; // Refresh 5 minutes before expiry
 
 export async function getAccessToken(config: ApiClientConfig): Promise<string> {
+  // Non-expiring tokens: the "refresh token" field actually holds the static access token.
+  // No refresh is ever performed — if it becomes invalid, the user must re-authorize.
+  if (config.tokenNeverExpires) {
+    return config.refreshToken;
+  }
+
   const cacheKey = config.refreshToken;
   const cached = tokenCache.get(cacheKey);
 
@@ -27,6 +33,10 @@ export async function getAccessToken(config: ApiClientConfig): Promise<string> {
 }
 
 export async function forceRefresh(config: ApiClientConfig): Promise<string> {
+  if (config.tokenNeverExpires) {
+    throw new ProviderAuthError('Token refresh is not available for this provider. Please re-authorize.');
+  }
+
   const cacheKey = config.refreshToken;
   tokenCache.delete(cacheKey);
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { ProviderApiClient } from '../src/client/api-client.js';
-import { ProviderApiError, ProviderNetworkError, ProviderRateLimitError } from '../src/errors.js';
+import { ProviderAuthError, ProviderApiError, ProviderNetworkError, ProviderRateLimitError } from '../src/errors.js';
 
 // Mock the token manager module
 vi.mock('../src/client/token-manager.js', () => ({
@@ -165,6 +165,35 @@ describe('ProviderApiClient', () => {
       await expect(client.create('/items', {})).rejects.toThrow(ProviderNetworkError);
       await expect(client.update('/items/1', {})).rejects.toThrow(ProviderNetworkError);
       await expect(client.remove('/items/1')).rejects.toThrow(ProviderNetworkError);
+    });
+  });
+
+  describe('tokenNeverExpires', () => {
+    let staticClient: ProviderApiClient;
+
+    beforeEach(() => {
+      staticClient = new ProviderApiClient({ ...clientConfig, tokenNeverExpires: true });
+    });
+
+    it('throws ProviderAuthError on 401 without retrying (request)', async () => {
+      mockFetch.mockResolvedValue(new Response('Unauthorized', { status: 401 }));
+
+      await expect(staticClient.request('/items')).rejects.toThrow(ProviderAuthError);
+      expect(mockFetch).toHaveBeenCalledTimes(1); // no retry
+    });
+
+    it('throws ProviderAuthError on 401 without retrying (create)', async () => {
+      mockFetch.mockResolvedValue(new Response('Unauthorized', { status: 401 }));
+
+      await expect(staticClient.create('/items', { name: 'x' })).rejects.toThrow(ProviderAuthError);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws ProviderAuthError on 401 without retrying (remove)', async () => {
+      mockFetch.mockResolvedValue(new Response('Unauthorized', { status: 401 }));
+
+      await expect(staticClient.remove('/items/1')).rejects.toThrow(ProviderAuthError);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
   });
 });

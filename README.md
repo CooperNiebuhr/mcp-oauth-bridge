@@ -7,16 +7,26 @@ Provide a single config object describing your provider's OAuth endpoints and yo
 ## How It Works
 
 ```
-MCP Client (Claude, etc.)          mcp-server-bridge              Provider API
-        │                                │                              │
-        │── OAuth 2.1 + PKCE ──────────▶│                              │
-        │                                │── OAuth 2.0 ───────────────▶│
-        │                                │◀── access + refresh token ──│
-        │◀── MCP access token ──────────│                              │
-        │                                │                              │
-        │── tool call (Bearer token) ──▶│                              │
-        │                                │── authenticated request ───▶│
-        │◀── tool result ───────────────│◀── API response ────────────│
+ +-----------+                +------------------+              +--------------+
+ |MCP Client |                |mcp-server-bridge |              | Provider API |
+ +-----+-----+                +--------+---------+              +------+-------+
+       |                               |                               |
+       |  (A) Authorization            |                               |
+       |                               |                               |
+       | ---  authorize (PKCE)  -----> |                               |
+       |                               | ---  redirect to login  ----> |
+       |                               | <--  auth code  ------------- |
+       |                               | ---  exchange code  --------> |
+       |                               | <--  provider tokens  ------- |
+       | <--  MCP access token  ------ |                               |
+       |                               |                               |
+       |  (B) Tool Execution           |                               |
+       |                               |                               |
+       | ---  tool call (Bearer) ----> |                               |
+       |                               | ---  authenticated req  ----> |
+       |                               | <--  API response  ---------  |
+       | <--  tool result  ----------- |                               |
+       |                               |                               |
 ```
 
 The bridge translates between the MCP SDK's OAuth 2.1 requirements and your provider's OAuth 2.0 flow. Your code only defines the provider config and tool handlers.

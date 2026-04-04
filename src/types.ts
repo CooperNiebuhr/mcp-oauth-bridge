@@ -17,6 +17,10 @@ export interface ProviderConfig {
     scopes: string[];
     /** Delimiter used to join scopes in the authorize URL (default: ' ' per RFC 6749 §3.3). */
     scopeDelimiter?: string;
+    /** Content type for the token exchange request (default: 'form'). Set to 'json' for providers like Notion and Linear that require JSON. */
+    tokenContentType?: 'form' | 'json';
+    /** How to send client credentials in the token exchange (default: 'body'). Set to 'basic' for providers that require HTTP Basic auth (e.g. Stripe). */
+    clientAuthMethod?: 'body' | 'basic';
     /** Additional query params for the authorize redirect (e.g. { access_type: "offline" }). */
     extraAuthorizeParams?: Record<string, string>;
   };
@@ -45,6 +49,17 @@ export interface ProviderConfig {
    * Return null if allowed, or an error message string if denied.
    */
   authorizeUser?: (identity: UserIdentity) => string | null;
+
+  /**
+   * Set to true for providers that issue non-expiring access tokens with no refresh token
+   * (e.g. ClickUp, Notion, Linear, Todoist, Figma, Slack user tokens).
+   *
+   * When enabled:
+   * - The callback handler accepts responses without a refresh_token
+   * - The access token is stored with a far-future expiry
+   * - 401 responses throw ProviderAuthError instead of attempting refresh (user must re-authorize)
+   */
+  tokenNeverExpires?: boolean;
 
   /** Token refresh endpoint if different from auth.tokenUrl. */
   refreshTokenUrl?: string;
@@ -90,7 +105,7 @@ export interface ProviderApiClientInterface {
 
 /** Per-user provider credentials stored after successful OAuth callback. */
 export interface UserProviderTokenRecord {
-  providerRefreshToken: string;
+  providerRefreshToken: string | null;
   providerAccessToken: string | null;
   providerAccessTokenExpiry: number; // seconds since epoch
   identity: UserIdentity;

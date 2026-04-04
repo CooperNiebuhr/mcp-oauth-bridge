@@ -120,4 +120,22 @@ describe('token-manager', () => {
 
     await expect(getAccessToken(config)).rejects.toThrow('Token refresh network error');
   });
+
+  describe('tokenNeverExpires', () => {
+    const staticConfig: ApiClientConfig = {
+      ...config,
+      refreshToken: 'static-access-token',
+      tokenNeverExpires: true,
+    };
+
+    it('returns the static token without fetching', async () => {
+      const token = await getAccessToken(staticConfig);
+      expect(token).toBe('static-access-token');
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('forceRefresh throws ProviderAuthError', async () => {
+      await expect(forceRefresh(staticConfig)).rejects.toThrow('Token refresh is not available');
+    });
+  });
 });
