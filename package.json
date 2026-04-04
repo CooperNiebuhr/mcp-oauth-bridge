@@ -1,6 +1,6 @@
 {
   "name": "mcp-server-bridge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "OAuth 2.1-to-2.0 bridge for MCP servers — config-driven authorization server with PKCE, per-user credential isolation, and token re-issuance",
   "type": "module",
   "main": "dist/index.js",
